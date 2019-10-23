@@ -14,8 +14,9 @@ local pkt_sizes		= { 64, 128, 256, 512, 1024, 1280, 1518 };
 local duration		= 30000;
 local confirmDuration	= 60000;
 local pauseTime		= 8000;
-local FRAME_LOSS=0.01;
+local FRAME_LOSS=0.01;  -- Percentage
 local PORT_NUMBERS=4;
+local trial_round=12; --Times
 
 -- define the ports in use
 local sendport		= "0";
@@ -30,15 +31,8 @@ local initialRate	= 50 ;
 
 local tx_prev={};
 local rx_prev={};
-
-local tx0_prev=0;
-local tx1_prev=0;
-local tx2_prev=0;
-local tx3_prev=0;
-local rx0_prev=0;
-local rx1_prev=0;
-local rx2_prev=0;
-local rx3_prev=0;
+local total_tx=0;
+local total_rx=0;
 
 local function setupTraffic()
 	--pktgen.set_ipaddr(sendport, "dst", dstip);
@@ -71,9 +65,6 @@ end
 
 local function getPortStats()
 	-- Get and modify all port stats manually by using simple math.
-	local statTxRx_0, statTxRx_1, statTxRx_2, statTxRx_3;
-	local num_tx0, num_tx1, num_tx2, num_tx3, total_tx=0;
-	local num_rx0, num_rx1, num_rx2, num_rx3, total_rx=0;
 	local num_dropped_0, num_dropped_1, num_dropped_2, num_dropped_3, total_dropped;
 	local ret_loss;
 	local msg;
@@ -82,7 +73,6 @@ local function getPortStats()
 	local numRx={};
 
 	for port_count=0, PORT_NUMBERS-1, 1 do
-		-- statTxRx = pktgen.portStats(port_count, "port")[tonumber(port_count)];
 		table.insert(statTxRx, pktgen.portStats(port_count, "port")[tonumber(port_count)]);
 
 		tx_prev[port_count+1] = tx_prev[port_count+1] or 0;
@@ -94,75 +84,31 @@ local function getPortStats()
 		total_rx = total_rx + numRx[port_count+1];
 	end
 
-	-- statTxRx_0 = pktgen.portStats(0, "port")[tonumber(0)];
-	-- statTxRx_1 = pktgen.portStats(1, "port")[tonumber(1)];
-	-- statTxRx_2 = pktgen.portStats(2, "port")[tonumber(2)];
-	-- statTxRx_3 = pktgen.portStats(3, "port")[tonumber(3)];
-	-- num_tx0 = statTxRx_0.opackets-tx0_prev;
-	-- num_tx1 = statTxRx_1.opackets-tx1_prev;
-	-- num_tx2 = statTxRx_2.opackets-tx2_prev;
-	-- num_tx3 = statTxRx_3.opackets-tx3_prev;
-	-- total_tx = num_tx0+num_tx1+num_tx2+num_tx3;
-
-	-- num_rx0 = statTxRx_0.ipackets-rx0_prev;
-	-- num_rx1 = statTxRx_1.ipackets-rx1_prev;
-	-- num_rx2 = statTxRx_2.ipackets-rx2_prev;
-	-- num_rx3 = statTxRx_3.ipackets-rx3_prev;
-	-- total_rx = num_rx0+num_rx1+num_rx2+num_rx3;
-
-	-- num_dropped_0 = num_tx1 - num_rx0;
-	-- num_dropped_1 = num_tx0 - num_rx1;
-	-- num_dropped_2 = num_tx3 - num_rx2;
-	-- num_dropped_3 = num_tx2 - num_rx3;
-	num_dropped_0 = numTx[2] - numRx[1];
-	num_dropped_1 = numTx[1] - numRx[2];
-	num_dropped_2 = numTx[4] - numRx[3];
-	num_dropped_3 = numTx[3] - numRx[4];
+	num_dropped_0 = numTx[2] - numRx[1]; -- Port1 tx - Port0 rx
+	num_dropped_1 = numTx[1] - numRx[2]; -- Port0 tx - Port1 rx
+	num_dropped_2 = numTx[4] - numRx[3]; -- Port3 tx - Port2 rx
+	num_dropped_3 = numTx[3] - numRx[4]; -- Port2 tx - Port3 rx
 	total_dropped = num_dropped_0+num_dropped_1+num_dropped_2+num_dropped_3;
 
 	msg =        string.format("[P0]    Tx: %d Rx: %d Drop: %d\n", numTx[1], numRx[1], num_dropped_0);
 	msg = msg .. string.format("[P1]    Tx: %d Rx: %d Drop: %d\n", numTx[2], numRx[2], num_dropped_1);
 	msg = msg .. string.format("[P2]    Tx: %d Rx: %d Drop: %d\n", numTx[3], numRx[3], num_dropped_2);
 	msg = msg .. string.format("[P3]    Tx: %d Rx: %d Drop: %d", numTx[4], numRx[4], num_dropped_3);
-	-- msg =        string.format("[P0]    Tx: %d Rx: %d Drop: %d\n", num_tx0, num_rx0, num_dropped_0);
-	-- msg = msg .. string.format("[P1]    Tx: %d Rx: %d Drop: %d\n", num_tx1, num_rx1, num_dropped_1);
-	-- msg = msg .. string.format("[P2]    Tx: %d Rx: %d Drop: %d\n", num_tx2, num_rx2, num_dropped_2);
-	-- msg = msg .. string.format("[P3]    Tx: %d Rx: %d Drop: %d", num_tx3, num_rx3, num_dropped_3);
 
 	print(msg);
 	file:write(msg.."\n");
 
-	-- print("[PORT 0] Tx: " .. num_tx0 .. ". Rx: " .. num_rx0 .. ". Dropped: " .. num_dropped_0);
-	-- print("[PORT 1] Tx: " .. num_tx1 .. ". Rx: " .. num_rx1 .. ". Dropped: " .. num_dropped_1);
-	-- print("[PORT 2] Tx: " .. num_tx2 .. ". Rx: " .. num_rx2 .. ". Dropped: " .. num_dropped_2);
-	-- print("[PORT 3] Tx: " .. num_tx3 .. ". Rx: " .. num_rx3 .. ". Dropped: " .. num_dropped_3);
-	-- file:write("[PORT 0] Tx: " .. num_tx0 .. ". Rx: " .. num_rx0 .. ". Dropped: " .. num_dropped_0 .. "\n");
-	-- file:write("[PORT 1] Tx: " .. num_tx1 .. ". Rx: " .. num_rx1 .. ". Dropped: " .. num_dropped_1 .. "\n");
-	-- file:write("[PORT 2] Tx: " .. num_tx2 .. ". Rx: " .. num_rx2 .. ". Dropped: " .. num_dropped_2 .. "\n");
-	-- file:write("[PORT 3] Tx: " .. num_tx3 .. ". Rx: " .. num_rx3 .. ". Dropped: " .. num_dropped_3 .. "\n");
-	
 	ret_loss = (total_dropped / total_tx) * 100; -- Percentage
 
 	msg = string.format("[TOTAL] Tx: %d Rx: %d Drop: %d Frame loss: %0.5f %%", total_tx, total_rx, total_dropped, ret_loss);
 	print(msg);
 	file:write(msg.."\n");
 
-	-- print("[ ALL  ] Tx: " .. num_tx .. ". Rx: " .. num_rx .. ". Dropped: " .. num_dropped .. ". Frame loss(%): " .. ret_loss);
-	-- file:write("[ ALL  ] Tx: " .. num_tx .. ". Rx: " .. num_rx .. ". Dropped: " .. num_dropped .. ". Frame loss(%): " .. ret_loss .. "\n");
-	pktgen.delay(5000);
+	pktgen.delay(pauseTime);
 
-	-- tx0_prev = statTxRx_0.opackets;
-	-- tx1_prev = statTxRx_1.opackets;
-	-- tx2_prev = statTxRx_2.opackets;
-	-- tx3_prev = statTxRx_3.opackets;
-	-- rx0_prev = statTxRx_0.ipackets;
-	-- rx1_prev = statTxRx_1.ipackets;
-	-- rx2_prev = statTxRx_2.ipackets;
-	-- rx3_prev = statTxRx_3.ipackets;
-
-	for port_count = 0, PORT_NUMBERS, 1 do
-		tx_prev[port_count+1] = statTxRx[port_count+1].opackets;
-		rx_prev[port_count+1] = statTxRx[port_count+1].ipackets;
+	for port_count = 1, PORT_NUMBERS, 1 do
+		tx_prev[port_count] = statTxRx[port_count].opackets;
+		rx_prev[port_count] = statTxRx[port_count].ipackets;
 	end
 
 	return total_tx, total_rx, total_dropped, ret_loss;
@@ -180,70 +126,20 @@ local function runTrial(pkt_size, rate, duration, count)
 	-- file:write("Running trial #" .. count .. ". Rate: " .. rate .. " %. Packet Size: " .. pkt_size .. ". Duration (mS):" .. duration .. "\n");
 	print(msg);
 	file:write(msg.."\n");
-	pktgen.delay(10000);
+	pktgen.delay(pauseTime);
 	pktgen.start("all");
 
 	pktgen.delay(duration);
 	pktgen.stop("all");
 
-	pktgen.delay(10000);
+	pktgen.delay(pauseTime);
 
 	return getPortStats();
 
-	-- statTxRx_0 = pktgen.portStats(0, "port")[tonumber(0)];
-	-- statTxRx_1 = pktgen.portStats(1, "port")[tonumber(1)];
-	-- statTxRx_2 = pktgen.portStats(2, "port")[tonumber(2)];
-	-- statTxRx_3 = pktgen.portStats(3, "port")[tonumber(3)];
-
-	-- num_tx0 = statTxRx_0.opackets-tx0_prev;
-	-- num_tx1 = statTxRx_1.opackets-tx1_prev;
-	-- num_tx2 = statTxRx_2.opackets-tx2_prev;
-	-- num_tx3 = statTxRx_3.opackets-tx3_prev;
-	-- num_tx = num_tx0+num_tx1+num_tx2+num_tx3;
-
-	-- num_rx0 = statTxRx_0.ipackets-rx0_prev;
-	-- num_rx1 = statTxRx_1.ipackets-rx1_prev;
-	-- num_rx2 = statTxRx_2.ipackets-rx2_prev;
-	-- num_rx3 = statTxRx_3.ipackets-rx3_prev;
-	-- num_rx = num_rx0+num_rx1+num_rx2+num_rx3;
-
-	-- num_dropped_0 = num_tx1 - num_rx0;
-	-- num_dropped_1 = num_tx0 - num_rx1;
-	-- num_dropped_2 = num_tx3 - num_rx2;
-	-- num_dropped_3 = num_tx2 - num_rx3;
-	-- num_dropped = num_dropped_0+num_dropped_1+num_dropped_2+num_dropped_3;
-	
-
-	-- print("[PORT 0] Tx: " .. num_tx0 .. ". Rx: " .. num_rx0 .. ". Dropped: " .. num_dropped_0);
-	-- print("[PORT 1] Tx: " .. num_tx1 .. ". Rx: " .. num_rx1 .. ". Dropped: " .. num_dropped_1);
-	-- print("[PORT 2] Tx: " .. num_tx2 .. ". Rx: " .. num_rx2 .. ". Dropped: " .. num_dropped_2);
-	-- print("[PORT 3] Tx: " .. num_tx3 .. ". Rx: " .. num_rx3 .. ". Dropped: " .. num_dropped_3);
-
-	-- file:write("[PORT 0] Tx: " .. num_tx0 .. ". Rx: " .. num_rx0 .. ". Dropped: " .. num_dropped_0 .. "\n");
-	-- file:write("[PORT 1] Tx: " .. num_tx1 .. ". Rx: " .. num_rx1 .. ". Dropped: " .. num_dropped_1 .. "\n");
-	-- file:write("[PORT 2] Tx: " .. num_tx2 .. ". Rx: " .. num_rx2 .. ". Dropped: " .. num_dropped_2 .. "\n");
-	-- file:write("[PORT 3] Tx: " .. num_tx3 .. ". Rx: " .. num_rx3 .. ". Dropped: " .. num_dropped_3 .. "\n");
-	
-	-- ret_loss = (num_dropped / num_tx) * 100;
-
-	-- print("[ ALL  ] Tx: " .. num_tx .. ". Rx: " .. num_rx .. ". Dropped: " .. num_dropped .. ". Frame loss(%): " .. ret_loss);
-	-- file:write("[ ALL  ] Tx: " .. num_tx .. ". Rx: " .. num_rx .. ". Dropped: " .. num_dropped .. ". Frame loss(%): " .. ret_loss .. "\n");
-	-- pktgen.delay(5000);
-
-	-- tx0_prev = statTxRx_0.opackets;
-	-- tx1_prev = statTxRx_1.opackets;
-	-- tx2_prev = statTxRx_2.opackets;
-	-- tx3_prev = statTxRx_3.opackets;
-	-- rx0_prev = statTxRx_0.ipackets;
-	-- rx1_prev = statTxRx_1.ipackets;
-	-- rx2_prev = statTxRx_2.ipackets;
-	-- rx3_prev = statTxRx_3.ipackets;
-
-	-- return num_tx, num_rx, num_dropped, ret_loss;
 end
 
 local function runThroughputTest(pkt_size)
-	local num_dropped, max_rate, min_rate, trial_rate;
+	local max_rate, min_rate, trial_rate;
 	local total_tx, total_rx, total_dropped, ret_loss;
 	local tx_pps, rx_pps, msg;
 
@@ -251,7 +147,7 @@ local function runThroughputTest(pkt_size)
 	min_rate = 1;
 	trial_rate = initialRate;
 	
-	for count=1, 13, 1
+	for count=1, trial_round, 1
 	do
 		total_tx, total_rx, total_dropped, ret_loss = runTrial(pkt_size, trial_rate, duration, count);
 		if ret_loss <= FRAME_LOSS
@@ -277,7 +173,7 @@ local function runThroughputTest(pkt_size)
 	tx_pps = total_tx / 4 / (confirmDuration/1000);
 	rx_pps = total_rx / 4 / (confirmDuration/1000);
 
-	msg = string.format("tx-pps: %0.3f rx-pps: %0.3f\n", tx_pps, rx_pps);
+	msg = string.format("[AVG-PPS] tx-pps: %0.3f rx-pps: %0.3f\n", tx_pps, rx_pps);
 
 	if ret_loss <= FRAME_LOSS
 	then
@@ -285,20 +181,12 @@ local function runThroughputTest(pkt_size)
 									, pkt_size, trial_rate);
 		print(msg);
 		file:write(msg.."\n\n");
-		-- print("tx-pps: "..tx_pps.. " rx-pps: "..rx_pps);
-		-- file:write("tx-pps: "..tx_pps.. " rx-pps: "..rx_pps .. "\n\n")
-		-- print("Max rate for packet size "  .. pkt_size .. "B is: " .. trial_rate);
-		-- file:write("Max rate for packet size "  .. pkt_size .. "B is: " .. trial_rate .. "\n\n");
 	else
 		msg = msg .. string.format("Max rate for %d bytes of %0.3f%% could not be \z
-                                            connfirmed for %s seconds as required by rfc2544.\n\n"
-                                            , pkt_size, trial_rate, confirmDuration);
+									connfirmed for %s seconds as required by rfc2544."
+									, pkt_size, trial_rate, confirmDuration/1000 );
 		print(msg);
 		file:write(msg.."\n\n");
-		-- print("tx-pps: "..tx_pps.. " rx-pps: "..rx_pps);
-		-- file:write("tx-pps: "..tx_pps.. " rx-pps: "..rx_pps .. "\n\n")
-		-- print("Max rate for packet size " .. pkt_size .. " of " .. trial_rate .. "% could not be confirmed for 60 seconds as required by rfc2544.");
-		-- file:write("Max rate for packet size " .. pkt_size .. " of " .. trial_rate .. "% could not be confirmed for 60 seconds as required by rfc2544." .. "\n\n");
 	end
 end
 
@@ -311,7 +199,6 @@ function main()
 
 	for _,size in pairs(pkt_sizes)
 	do
-		pktgen.delay(3000);
 		runThroughputTest(size);
 	end
 	file:close();
